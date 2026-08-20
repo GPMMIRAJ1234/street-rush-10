@@ -1,0 +1,12 @@
+{
+  "name": "street-rush-10-cloudflare",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.31.0"
+  }
+}
