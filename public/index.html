@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Street Rush 10 Multiplayer</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b0d12;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
+header{height:56px;background:#171b24;display:flex;justify-content:space-between;align-items:center;padding:0 14px}.logo{font-weight:900;letter-spacing:1px}
+main{height:calc(100vh - 56px);position:relative}.panel{width:min(460px,94vw);background:#171b24;border:1px solid #343b4b;border-radius:20px;padding:22px}
+#menu{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:15px;z-index:4;background:#0b0d12}
+h1{margin:0 0 8px;font-size:31px}p{opacity:.72}input,select{width:100%;height:48px;margin:6px 0 9px;background:#0e1118;border:1px solid #3c4455;border-radius:11px;color:white;padding:0 12px;font-size:16px}
+button{border:0;border-radius:12px;color:white;font-weight:800}.primary{width:100%;height:50px;background:#e94560;margin:5px 0}.secondary{width:100%;height:44px;background:#292f3d;margin-top:6px}
+.room{font-size:32px;text-align:center;font-weight:950;letter-spacing:7px;border:2px dashed #e94560;border-radius:12px;padding:12px;margin:12px 0}
+#players{display:grid;grid-template-columns:1fr 1fr;gap:6px}.p{background:#10141c;border-radius:8px;padding:8px;font-size:12px}.ready{float:right}
+#game{width:100%;height:100%;display:block}#hud{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;pointer-events:none}.hud{background:#171b24dd;border:1px solid #343b4b;border-radius:10px;padding:8px;font-size:12px}
+#controls{position:absolute;bottom:15px;left:0;right:0;display:flex;justify-content:space-between;padding:0 16px}.grp{display:flex;gap:9px}#controls button{width:72px;height:66px;background:#202634;border:1px solid #454d5e;font-size:22px}#nitro{width:105px!important;font-size:14px!important}
+.hidden{display:none!important}.error{color:#ff7188;margin-top:8px;font-size:13px}.ok{color:#76e39b}
+</style></head>
+<body><header><div class="logo">🏎️ STREET RUSH 10</div><div id="conn">OFFLINE</div></header>
+<main>
+<canvas id="game"></canvas>
+<div id="hud" class="hidden"><div class="hud" id="lap">LAP 1/3</div><div class="hud" id="pos">1st / 10</div><div class="hud" id="roomHud"></div></div>
+<div id="controls" class="hidden"><div class="grp"><button id="left">◀</button><button id="right">▶</button></div><div class="grp"><button id="brake">BRAKE</button><button id="nitro">⚡ NITRO</button></div></div>
+<div id="menu"><div class="panel">
+<section id="home"><h1>Street Rush 10</h1><p>Real-time custom rooms for 2–10 phones.</p><button class="primary" id="create">CREATE ROOM</button><button class="primary" id="join">JOIN ROOM</button></section>
+<section id="lobby" class="hidden"><h1>🏁 Custom Room</h1><p>Share the code with your friends.</p><div class="room" id="code">------</div><input id="name" value="Player" maxlength="14" placeholder="Driver name">
+<select id="track"><option>Downtown Rush</option><option>Desert Highway</option><option>Mountain Pass</option><option>Neon City</option></select>
+<select id="laps"><option value="3">3 Laps</option><option value="2">2 Laps</option><option value="5">5 Laps</option></select>
+<div id="players"></div><button class="primary" id="ready">READY</button><button class="primary hidden" id="start">START RACE</button><button class="secondary" id="back">BACK</button><div id="msg"></div></section>
+<section id="joinbox" class="hidden"><h1>🚗 Join Room</h1><input id="joinName" value="Player" maxlength="14" placeholder="Driver name"><input id="joinCode" maxlength="6" placeholder="ROOM CODE" style="text-transform:uppercase"><button class="primary" id="joinGo">JOIN</button><button class="secondary" id="backJoin">BACK</button><div id="joinMsg"></div></section>
+</div></div></main>
+<script>
+const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");let W,H;
+function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight-56;ctx.setTransform(1,0,0,1,0,0)}addEventListener("resize",resize);resize();
+const colors=["#e94560","#4cc9f0","#f9c74f","#90be6d","#f9844a","#b5179e","#43aa8b","#f72585","#577590","#f8961e"];
+let ws,id,room,host,players=[],started=false,me=null,steer=0,brake=false,nitro=false,progress=0,lap=0,speed=.18,last=performance.now(),settings={laps:3};
+
+function show(x){["home","lobby","joinbox"].forEach(i=>document.getElementById(i).classList.add("hidden"));document.getElementById(x).classList.remove("hidden")}
+function connect(){
+ const proto=location.protocol==="https:"?"wss":"ws";ws=new WebSocket(`${proto}://${location.host}/ws`);
+ ws.onopen=()=>{document.getElementById("conn").textContent="🟢 CONNECTED"};
+ ws.onclose=()=>document.getElementById("conn").textContent="🔴 DISCONNECTED";
+ ws.onmessage=e=>handle(JSON.parse(e.data));
+}
+function send(x){if(ws&&ws.readyState===1)ws.send(JSON.stringify(x))}
+function handle(m){
+ if(m.type==="created"||m.type==="joined"){id=m.id;room=m.room;document.getElementById("code").textContent=room;show("lobby");return}
+ if(m.type==="error"){document.getElementById("msg").textContent=m.message;document.getElementById("joinMsg").textContent=m.message;return}
+ if(m.type==="state"){room=m.room;host=m.host;players=m.players;settings=m.settings;renderLobby();return}
+ if(m.type==="start"){started=true;settings=m.settings;document.getElementById("menu").classList.add("hidden");document.getElementById("hud").classList.remove("hidden");document.getElementById("controls").classList.remove("hidden");document.getElementById("roomHud").textContent="ROOM "+room;last=performance.now();requestAnimationFrame(loop);return}
+ if(m.type==="positions"){players=m.players}
+}
+function renderLobby(){
+ document.getElementById("players").innerHTML=players.map(p=>`<div class="p">${p.color?`<span style="color:${p.color}">●</span>`:"●"} ${p.name}<span class="ready">${p.ready?"🟢":"⚪"}</span></div>`).join("");
+ const amHost=id===host;document.getElementById("start").classList.toggle("hidden",!amHost);document.getElementById("ready").classList.toggle("hidden",amHost);
+ if(amHost){document.getElementById("start").disabled=players.length<2||players.some(p=>!p.ready);document.getElementById("start").style.opacity=document.getElementById("start").disabled?.5:1}
+}
+document.getElementById("create").onclick=()=>{connect();setTimeout(()=>send({type:"create",name:document.getElementById("name").value,color:colors[0]}),150)};
+document.getElementById("join").onclick=()=>show("joinbox");
+document.getElementById("joinGo").onclick=()=>{connect();setTimeout(()=>send({type:"join",room:document.getElementById("joinCode").value,name:document.getElementById("joinName").value,color:colors[Math.floor(Math.random()*colors.length)]}),150)};
+document.getElementById("back").onclick=()=>location.reload();document.getElementById("backJoin").onclick=()=>show("home");
+document.getElementById("ready").onclick=()=>{send({type:"ready",value:true});document.getElementById("ready").textContent="READY ✓"};
+document.getElementById("start").onclick=()=>send({type:"start"});
+document.getElementById("track").onchange=e=>send({type:"settings",settings:{track:e.target.value}});
+document.getElementById("laps").onchange=e=>send({type:"settings",settings:{laps:+e.target.value}});
+
+function bind(id,down,up){let b=document.getElementById(id);b.onpointerdown=e=>{e.preventDefault();down()};b.onpointerup=b.onpointercancel=e=>{e.preventDefault();up()}}
+bind("left",()=>steer=-1,()=>{if(steer<0)steer=0});bind("right",()=>steer=1,()=>{if(steer>0)steer=0});bind("brake",()=>brake=true,()=>brake=false);bind("nitro",()=>nitro=true,()=>{});
+function draw(){
+ ctx.fillStyle="#16703c";ctx.fillRect(0,0,W,H);let rw=Math.min(W*.72,520),cx=W/2;
+ ctx.fillStyle="#34363b";ctx.fillRect(cx-rw/2,0,rw,H);ctx.fillStyle="#f2d06b";ctx.fillRect(cx-rw/2,0,5,H);ctx.fillRect(cx+rw/2-5,0,5,H);
+ ctx.save();ctx.strokeStyle="#eee";ctx.lineWidth=4;ctx.setLineDash([28,30]);ctx.lineDashOffset=performance.now()/8;ctx.beginPath();ctx.moveTo(cx,0);ctx.lineTo(cx,H);ctx.stroke();ctx.restore();
+ [...players].sort((a,b)=>a.progress-b.progress).forEach((p,i)=>{let x=cx+p.x*Math.min(W*.34,240),y=H*(.72-(p.progress%1)*.45),s=p.id===id?1.08:.78;ctx.save();ctx.translate(x,y);ctx.scale(s,s);ctx.fillStyle=p.color;ctx.beginPath();ctx.roundRect(-16,-32,32,64,9);ctx.fill();ctx.fillStyle="#9ed8e8";ctx.fillRect(-11,-21,22,15);ctx.fillStyle="#111";ctx.fillRect(-21,-22,6,15);ctx.fillRect(15,-22,6,15);ctx.restore()});
+}
+function loop(t){
+ if(!started)return;let dt=Math.min(.05,(t-last)/1000);last=t;
+ speed=brake?Math.max(.15,speed-.9*dt):Math.min(1.5,speed+.55*dt);if(nitro){speed=Math.min(2.1,speed+.03);nitro=false}
+ me=players.find(p=>p.id===id);if(me){me.x=steer?Math.max(-1.05,Math.min(1.05,(me.x||0)+steer*dt*1.8)):(me.x||0);progress+=speed*dt*.095;if(progress>=1){progress=0;lap++}send({type:"input",x:me.x,progress,lap,finished:false});}
+ let sorted=[...players].sort((a,b)=>(b.lap+b.progress)-(a.lap+a.progress)),pos=Math.max(1,sorted.findIndex(p=>p.id===id)+1);
+ document.getElementById("lap").textContent=`LAP ${Math.min(lap+1,settings.laps)}/${settings.laps}`;document.getElementById("pos").textContent=`${pos} / ${players.length}`;
+ draw();requestAnimationFrame(loop);
+}
+</script></body></html>
