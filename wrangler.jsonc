@@ -1,25 +1,26 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "street-rush-10",
   "main": "src/index.js",
   "compatibility_date": "2026-08-20",
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS"
   },
   "durable_objects": {
     "bindings": [
       {
-        "name": "RACE_ROOM",
-        "class_name": "RaceRoom"
+        "name": "RACE_HUB",
+        "class_name": "RaceHub"
       }
     ]
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["RaceRoom"]
+      "new_sqlite_classes": [
+        "RaceHub"
+      ]
     }
   ]
 }
